@@ -9348,6 +9348,16 @@ static int show_starttime(THD *thd, SHOW_VAR *var, char *buff) {
   return 0;
 }
 
+static int show_mysqld_start_time(THD *, SHOW_VAR *var, char *buff) {
+  MYSQL_TIME mysql_time{};
+  var->type = SHOW_CHAR;
+  var->value = buff;
+  my_tz_UTC->gmt_sec_to_TIME(&mysql_time,
+                               static_cast<my_time_t>(server_start_time));
+  my_datetime_to_str(mysql_time, buff, 0);
+  return 0;
+}
+
 static int show_max_used_connections_time(THD *thd, SHOW_VAR *var, char *buff) {
   MYSQL_TIME max_used_connections_time;
   var->type = SHOW_CHAR;
@@ -10017,6 +10027,8 @@ SHOW_VAR status_vars[] = {
     {"Threads_running", (char *)&show_num_thread_running, SHOW_FUNC,
      SHOW_SCOPE_GLOBAL},
     {"Uptime", (char *)&show_starttime, SHOW_FUNC, SHOW_SCOPE_GLOBAL},
+    {"mysqld_start_time", (char *)&show_mysqld_start_time, SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
 #ifdef ENABLED_PROFILING
     {"Uptime_since_flush_status", (char *)&show_flushstatustime, SHOW_FUNC,
      SHOW_SCOPE_GLOBAL},
