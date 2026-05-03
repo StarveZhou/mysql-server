@@ -3979,6 +3979,14 @@ static Sys_var_bool Sys_skip_name_resolve(
     READ_ONLY GLOBAL_VAR(opt_skip_name_resolve),
     CMD_LINE(OPT_ARG, OPT_SKIP_RESOLVE), DEFAULT(false));
 
+static Sys_var_bool Sys_recover_preserve_trx(
+    "recover_preserve_trx",
+    "When ON, InnoDB crash recovery uses the experimental path that preserves "
+    "active transactions for later session attachment. Default OFF; must be "
+    "set at server startup.",
+    READ_ONLY GLOBAL_VAR(opt_recover_preserve_trx), CMD_LINE(OPT_ARG),
+    DEFAULT(false));
+
 static Sys_var_bool Sys_skip_show_database(
     "skip_show_database", "Don't allow 'SHOW DATABASE' commands",
     READ_ONLY GLOBAL_VAR(opt_skip_show_db), CMD_LINE(OPT_ARG), DEFAULT(false));

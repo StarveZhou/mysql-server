@@ -174,6 +174,8 @@ extern ulong opt_log_throttle_queries_not_using_indexes;
 extern bool opt_log_slow_extra;
 extern bool opt_disable_networking, opt_skip_show_db;
 extern bool opt_skip_name_resolve;
+/** InnoDB crash recovery: preserve active transactions (startup opt only). */
+extern bool opt_recover_preserve_trx;
 extern bool opt_help;
 extern bool opt_verbose;
 extern bool opt_character_set_client_handshake;
