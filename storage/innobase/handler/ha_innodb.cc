@@ -4988,6 +4988,8 @@ static int innodb_init_params() {
   high_level_read_only =
       srv_read_only_mode || srv_force_recovery > SRV_FORCE_NO_TRX_UNDO;
 
+  srv_recover_preserve_trx = opt_recover_preserve_trx;
+
   if (srv_read_only_mode) {
     ib::info(ER_IB_MSG_540) << "Started in read only mode";
 

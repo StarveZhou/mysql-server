@@ -372,6 +372,10 @@ extern bool srv_read_only_mode;
 /** Set if InnoDB operates in read-only mode or innodb-force-recovery
 is greater than SRV_FORCE_NO_TRX_UNDO. */
 extern bool high_level_read_only;
+/** When true (--recover_preserve_trx), crash recovery keeps resurrected
+active transactions (undo, trx objects, resurrected DD/IX locks) instead
+of rolling them back in the trx_recovery_rollback path. */
+extern bool srv_recover_preserve_trx;
 /** store to its own file each table created by an user; data
 dictionary tables are in the system tablespace 0 */
 extern bool srv_file_per_table;

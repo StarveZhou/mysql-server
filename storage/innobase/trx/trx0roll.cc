@@ -47,6 +47,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "row0undo.h"
 #include "sql_thd_internal_api.h"
 #include "srv0mon.h"
+#include "srv0srv.h"
 #include "srv0start.h"
 #include "trx0rec.h"
 #include "trx0roll.h"
@@ -687,6 +688,10 @@ static bool trx_rollback_or_clean_resurrected(
       ut_ad(!trx->is_recovered);
       return true;
     case TRX_STATE_ACTIVE:
+      if (srv_recover_preserve_trx && !trx->ddl_operation) {
+        /* Keep user trx (undo, locks); DD/DDL trx still rolled back below. */
+        return false;
+      }
       if (all || trx->ddl_operation) {
         trx_sys_mutex_exit();
         trx_rollback_active(trx);
@@ -716,6 +721,11 @@ void trx_rollback_or_clean_recovered(
   ut_ad(!srv_read_only_mode);
 
   ut_a(srv_force_recovery < SRV_FORCE_NO_TRX_UNDO);
+  if (srv_recover_preserve_trx && all) {
+    /* Background rollback of user transactions is disabled; MDL/IX was done
+    in trx_recovery_rollback without calling us. */
+    return;
+  }
   ut_ad(!all || trx_sys_need_rollback());
 
   if (all) {
@@ -781,7 +791,7 @@ encountered in crash recovery.  If the transaction already was
 committed, then we clean up a possible insert undo log. If the
 transaction was not yet committed, then we roll it back.
 Note: this is done in a background thread. */
-void trx_recovery_rollback(THD *thd) {
+void trx_recovery_rollback(THD *thd, bool do_rollback) {
   std::vector<MDL_ticket *> shared_mdl_list;
   ut_ad(!srv_read_only_mode);
 
@@ -835,7 +845,9 @@ void trx_recovery_rollback(THD *thd) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 
-  trx_rollback_or_clean_recovered(true);
+  if (do_rollback) {
+    trx_rollback_or_clean_recovered(true);
+  }
 
   // Release MDL locks
   for (auto mdl_ticket : shared_mdl_list) {
@@ -851,7 +863,7 @@ Note: this is done in a background thread. */
 void trx_recovery_rollback_thread() {
   THD *thd = create_internal_thd();
 
-  trx_recovery_rollback(thd);
+  trx_recovery_rollback(thd, !srv_recover_preserve_trx);
 
   destroy_internal_thd(thd);
 }

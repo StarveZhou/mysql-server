@@ -210,6 +210,10 @@ unsigned long long srv_online_max_size;
 is greater than SRV_FORCE_NO_TRX_UNDO. */
 bool high_level_read_only;
 
+/** When true, crash recovery keeps resurrected transactions instead of
+rolling them back (experimental; --recover_preserve_trx). */
+bool srv_recover_preserve_trx = false;
+
 /** Number of threads to use for parallel reads. */
 ulong srv_parallel_read_threads;
 

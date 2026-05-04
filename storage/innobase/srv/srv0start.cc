@@ -2379,6 +2379,12 @@ static void apply_dynamic_metadata() {
 /** On a restart, initialize the remaining InnoDB subsystems so that
 any tables (including data dictionary tables) can be accessed. */
 void srv_dict_recover_on_restart() {
+  if (srv_recover_preserve_trx) {
+    ib::info() << "recover_preserve_trx is ON: DDL/data-dictionary transactions"
+                  " are rolled back as usual; other resurrected ACTIVE"
+                  " transactions are preserved (undo, trx_sys, locks).";
+  }
+
   /* Resurrect locks for dictionary transactions */
   trx_resurrect_locks(false);
 
@@ -2590,7 +2596,8 @@ static void srv_shutdown_set_state(srv_shutdown_t new_state) {
 static void srv_shutdown_cleanup_and_master_stop();
 
 bool srv_shutdown_waits_for_rollback_of_recovered_transactions() {
-  return (srv_force_recovery < SRV_FORCE_NO_TRX_UNDO && srv_fast_shutdown == 0);
+  return (srv_force_recovery < SRV_FORCE_NO_TRX_UNDO && srv_fast_shutdown == 0 &&
+          !srv_recover_preserve_trx);
 }
 
 /** Shut down all InnoDB background tasks that may look up objects in
