@@ -37,23 +37,30 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include <sys/types.h>
 
 #include <algorithm>
+#include <map>
 #include <set>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
 #include "btr0btr.h"
+#include "buf0buf.h"
 #include "current_thd.h"
 #include "debug_sync.h" /* CONDITIONAL_SYNC_POINT */
 #include "dict0boot.h"
+#include "dict0dict.h"
 #include "dict0mem.h"
+#include "fil0fil.h"
 #include "ha_prototypes.h"
 #include "lock0lock.h"
 #include "lock0priv.h"
 #include "os0thread.h"
+#include "mtr0mtr.h"
 #include "pars0pars.h"
 #include "row0mysql.h"
 #include "row0sel.h"
 #include "srv0mon.h"
+#include "srv0preserve.h"
 #include "trx0purge.h"
 #include "trx0sys.h"
 #include "usr0sess.h"
@@ -6291,4 +6298,120 @@ void lock_trx_alloc_locks(trx_t *trx) {
 void lock_notify_about_deadlock(const ut::vector<const trx_t *> &trxs_on_cycle,
                                 const trx_t *victim_trx) {
   Deadlock_notifier::notify(trxs_on_cycle, victim_trx);
+}
+
+void lock_preserve_catalog_reconcile_trx_locks(
+    trx_t *trx, const std::vector<preserve_cat_lock_rec_t> &prev,
+    std::vector<preserve_cat_lock_rec_t> *out, uint32_t *next_seq_io) {
+  ut_ad(locksys::owns_exclusive_global_latch());
+  ut_ad(trx_mutex_own(trx));
+
+  std::map<std::tuple<space_id_t, page_no_t, uint32_t, space_index_t>,
+           preserve_cat_lock_rec_t>
+      old_by_key;
+  for (const auto &rec : prev) {
+    const auto key = std::make_tuple(rec.space_id, rec.page_no, rec.heap_no,
+                                     rec.index_id);
+    old_by_key[key] = rec;
+  }
+
+  out->clear();
+  uint32_t seq = 1;
+
+  for (const lock_t *l = UT_LIST_GET_FIRST(trx->lock.trx_locks); l != nullptr;
+       l = UT_LIST_GET_NEXT(trx_locks, l)) {
+    if (lock_get_type_low(l) != LOCK_REC) {
+      continue;
+    }
+    if (lock_get_wait(l)) {
+      continue;
+    }
+    if (l->index == nullptr) {
+      continue;
+    }
+    for (ulint i = 0; i < lock_rec_get_n_bits(l); ++i) {
+      if (!lock_rec_get_nth_bit(l, i)) {
+        continue;
+      }
+      const auto key = std::make_tuple(
+          l->rec_lock.page_id.space(), l->rec_lock.page_id.page_no(),
+          static_cast<uint32_t>(i), l->index->id);
+      preserve_cat_lock_rec_t rec;
+      const auto it = old_by_key.find(key);
+      const uint32_t type_part =
+          static_cast<uint32_t>(l->type_mode & ~(LOCK_WAIT | LOCK_TYPE_MASK)) |
+          (l->type_mode &
+           (LOCK_MODE_MASK | LOCK_GAP | LOCK_REC_NOT_GAP |
+            LOCK_INSERT_INTENTION | LOCK_PREDICATE | LOCK_PRDT_PAGE));
+      if (it != old_by_key.end()) {
+        rec = it->second;
+        rec.seq = seq++;
+        rec.type_mode = type_part;
+      } else {
+        rec.seq = seq++;
+        rec.grant_stmt_epoch = trx->preserve_stmt_epoch;
+        rec.grant_undo_no = trx->undo_no;
+        rec.space_id = l->rec_lock.page_id.space();
+        rec.page_no = l->rec_lock.page_id.page_no();
+        rec.heap_no = static_cast<uint32_t>(i);
+        rec.index_id = l->index->id;
+        rec.type_mode = type_part;
+      }
+      out->push_back(rec);
+    }
+  }
+  *next_seq_io = seq;
+}
+
+void lock_preserve_catalog_replay_row_lock(trx_t *trx, space_id_t space_id,
+                                           page_no_t page_no, ulint heap_no,
+                                           space_index_t index_id,
+                                           ulint type_mode) {
+  const page_id_t page_id(space_id, page_no);
+  bool found;
+  const page_size_t page_size = fil_space_get_page_size(space_id, &found);
+  if (!found) {
+    return;
+  }
+
+  fil_space_t *space = fil_space_acquire_silent(space_id);
+  if (space == nullptr) {
+    return;
+  }
+
+  dict_index_t *index = nullptr;
+  dict_sys_mutex_enter();
+  {
+    const dict_index_t *ic =
+        dict_index_find(index_id_t(space_id, index_id));
+    index = const_cast<dict_index_t *>(ic);
+  }
+  dict_sys_mutex_exit();
+
+  if (index == nullptr) {
+    fil_space_release(space);
+    return;
+  }
+
+  mtr_t mtr;
+  mtr.start();
+
+  buf_block_t *block =
+      buf_page_get_gen(page_id, page_size, RW_X_LATCH, nullptr,
+                       Page_fetch::NORMAL, UT_LOCATION_HERE, &mtr);
+
+  ulint tm = type_mode | LOCK_REC;
+  tm &= ~LOCK_WAIT;
+
+  {
+    locksys::Shard_latch_guard guard{UT_LOCATION_HERE, page_id};
+    trx_mutex_enter(trx);
+    if (trx_state_eq(trx, TRX_STATE_ACTIVE)) {
+      lock_rec_add_to_queue(tm, block, heap_no, index, trx, true);
+    }
+    trx_mutex_exit(trx);
+  }
+
+  mtr.commit();
+  fil_space_release(space);
 }

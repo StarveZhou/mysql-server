@@ -837,6 +837,9 @@ struct trx_t {
   /** THD attached via START TRANSACTION WITH RDS_TRX_ID (preserved recovery). */
   bool session_attached_recovered;
 
+  /** Monotonic epoch per SQL statement (preserve-trx catalog). */
+  int32_t preserve_stmt_epoch{0};
+
   std::atomic<std::thread::id> killed_by; /*!< The thread ID that wants to
                             kill this transaction asynchronously.
                             This is required because we recursively

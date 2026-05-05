@@ -5802,6 +5802,9 @@ static int innobase_attach_recovered_trx(handlerton *hton, THD *thd,
   trx_sys_mutex_exit();
 
   if (old_placeholder != nullptr) {
+    ut_ad(trx_state_eq(old_placeholder, TRX_STATE_NOT_STARTED));
+    /* Placeholder may have bumped will_lock without a full commit path. */
+    old_placeholder->will_lock = 0;
     trx_free_for_mysql(old_placeholder);
   }
 

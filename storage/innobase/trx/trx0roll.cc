@@ -47,6 +47,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "row0undo.h"
 #include "sql_thd_internal_api.h"
 #include "srv0mon.h"
+#include "srv0preserve.h"
 #include "srv0srv.h"
 #include "srv0start.h"
 #include "trx0rec.h"
@@ -422,6 +423,8 @@ executed after the savepoint */
 
   trx_mark_sql_stat_end(trx);
 
+  srv_preserve_catalog_resync_after_savepoint_op(trx);
+
   trx->op_info = "";
 
   return (err);
@@ -532,6 +535,8 @@ dberr_t trx_savepoint_for_mysql(
 
   UT_LIST_ADD_LAST(trx->trx_savepoints, savep);
 
+  srv_preserve_catalog_on_savepoint(trx, savepoint_name);
+
   return (DB_SUCCESS);
 }
 
@@ -552,6 +557,7 @@ dberr_t trx_release_savepoint_for_mysql(
 
   if (savep != nullptr) {
     trx_roll_savepoint_free(trx, savep);
+    srv_preserve_catalog_resync_after_savepoint_op(trx);
   }
 
   return (savep != nullptr ? DB_SUCCESS : DB_NO_SAVEPOINT);

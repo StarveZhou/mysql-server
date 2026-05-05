@@ -1,0 +1,45 @@
+# Expected: SELECT ... FOR UPDATE row locks are in trx->lock.trx_locks, persisted in
+# the preserve catalog, replayed after crash, and block other sessions (same as DML).
+#
+# Currently fails attach (no rw transaction with this trx_id); fix tracked separately.
+
+--source include/have_innodb_max_16k.inc
+
+--disable_warnings
+DROP TABLE IF EXISTS t_fu_restart;
+--enable_warnings
+
+CREATE TABLE t_fu_restart (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_fu_restart VALUES (1, 0), (2, 0);
+
+--connect(con_hold,localhost,root,,test)
+--connection con_hold
+BEGIN;
+SELECT b FROM t_fu_restart WHERE a = 1 FOR UPDATE;
+
+--let $trx_id= query_get_value("SELECT trx_id FROM information_schema.innodb_trx WHERE trx_mysql_thread_id = CONNECTION_ID()", trx_id, 1)
+
+--connection default
+--echo # Restart; preserved FOR UPDATE trx should still hold X lock on row 1
+--let $restart_parameters = restart: --recover_preserve_trx=ON
+--source include/kill_and_restart_mysqld.inc
+
+--disable_query_log
+--eval START TRANSACTION WITH RDS_TRX_ID = $trx_id
+--enable_query_log
+
+--connect(con_block,localhost,root,,test)
+--connection con_block
+SET SESSION innodb_lock_wait_timeout = 1;
+--error ER_LOCK_WAIT_TIMEOUT
+UPDATE t_fu_restart SET b = 30 WHERE a = 1;
+
+--connection default
+COMMIT;
+
+--connection con_block
+UPDATE t_fu_restart SET b = 30 WHERE a = 1;
+SELECT a, b FROM t_fu_restart ORDER BY a;
+
+--connection default
+DROP TABLE t_fu_restart;

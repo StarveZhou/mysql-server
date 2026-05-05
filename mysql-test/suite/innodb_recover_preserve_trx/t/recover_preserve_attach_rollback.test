@@ -12,7 +12,7 @@ INSERT INTO t_recover_rb VALUES (1, 0);
 BEGIN;
 UPDATE t_recover_rb SET b = 200 WHERE a = 1;
 
---let $trx_id= query_get_value("SELECT trx_id FROM information_schema.innodb_trx LIMIT 1", trx_id, 1)
+--let $trx_id= query_get_value("SELECT trx_id FROM information_schema.innodb_trx WHERE trx_mysql_thread_id = CONNECTION_ID()", trx_id, 1)
 
 --let $restart_parameters= restart: --recover_preserve_trx=ON
 --source include/kill_and_restart_mysqld.inc

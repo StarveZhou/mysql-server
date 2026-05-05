@@ -229,6 +229,7 @@ SET(INNOBASE_SOURCES
   row/row0vers.cc
   srv/srv0conc.cc
   srv/srv0mon.cc
+  srv/srv0preserve.cc
   srv/srv0srv.cc
   srv/srv0start.cc
   srv/srv0tmp.cc

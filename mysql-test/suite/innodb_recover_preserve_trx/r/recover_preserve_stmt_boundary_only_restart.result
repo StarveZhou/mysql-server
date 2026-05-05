@@ -1,0 +1,16 @@
+DROP TABLE IF EXISTS t_stmt1;
+CREATE TABLE t_stmt1 (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_stmt1 VALUES (1, 0), (2, 0);
+BEGIN;
+UPDATE t_stmt1 SET b = 88 WHERE a = 1;
+# Kill and restart: --recover_preserve_trx=ON
+SELECT a, b FROM t_stmt1 ORDER BY a;
+a	b
+1	88
+2	0
+COMMIT;
+SELECT a, b FROM t_stmt1 ORDER BY a;
+a	b
+1	88
+2	0
+DROP TABLE t_stmt1;

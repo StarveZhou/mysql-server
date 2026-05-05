@@ -1,0 +1,17 @@
+DROP TABLE IF EXISTS t_lock_replay;
+CREATE TABLE t_lock_replay (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_lock_replay VALUES (1, 0), (2, 0);
+BEGIN;
+UPDATE t_lock_replay SET b = 2 WHERE a = 1;
+# Restart; preserved trx should still hold X lock on row 1
+# Kill and restart: --recover_preserve_trx=ON
+SET SESSION innodb_lock_wait_timeout = 1;
+UPDATE t_lock_replay SET b = 20 WHERE a = 1;
+ERROR HY000: Lock wait timeout exceeded; try restarting transaction
+COMMIT;
+UPDATE t_lock_replay SET b = 20 WHERE a = 1;
+SELECT a, b FROM t_lock_replay ORDER BY a;
+a	b
+1	20
+2	0
+DROP TABLE t_lock_replay;

@@ -1,0 +1,47 @@
+# Design §05 / §07 5.8: crash while second SQL is in progress; recovery uses catalog
+# last_stmt_boundary so the finished first statement stays visible in the trx and the
+# second statement's effects are rolled back to the boundary.
+#
+# Requires DEBUG_SYNC at innodb_row_update_for_mysql_begin (see row0mysql.cc).
+
+--source include/have_innodb_max_16k.inc
+--source include/have_debug_sync.inc
+
+--disable_warnings
+DROP TABLE IF EXISTS t_half_stmt;
+--enable_warnings
+
+CREATE TABLE t_half_stmt (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_half_stmt VALUES (1, 0), (2, 0);
+
+--connect(con_w,localhost,root,,test)
+
+--connection con_w
+BEGIN;
+UPDATE t_half_stmt SET b = 10 WHERE a = 1;
+
+--let $trx_id= query_get_value("SELECT trx_id FROM information_schema.innodb_trx WHERE trx_mysql_thread_id = CONNECTION_ID()", trx_id, 1)
+
+SET DEBUG_SYNC = 'innodb_row_update_for_mysql_begin SIGNAL half_stmt_started WAIT_FOR half_stmt_cont';
+--send UPDATE t_half_stmt SET b = 20 WHERE a = 2
+
+--connection default
+SET DEBUG_SYNC = 'now WAIT_FOR half_stmt_started';
+--let $restart_parameters = restart: --recover_preserve_trx=ON
+--source include/kill_and_restart_mysqld.inc
+
+--connection default
+SET DEBUG_SYNC = 'RESET';
+
+--echo # Row2 must not show uncommitted 20 after recovery-to-boundary; row1 stays 10 in preserved trx.
+--disable_query_log
+--eval START TRANSACTION WITH RDS_TRX_ID = $trx_id
+--enable_query_log
+
+SELECT a, b FROM t_half_stmt WHERE a IN (1, 2) ORDER BY a;
+
+COMMIT;
+
+SELECT a, b FROM t_half_stmt WHERE a IN (1, 2) ORDER BY a;
+
+DROP TABLE t_half_stmt;

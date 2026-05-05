@@ -1,0 +1,21 @@
+DROP TABLE IF EXISTS t_half_stmt;
+CREATE TABLE t_half_stmt (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_half_stmt VALUES (1, 0), (2, 0);
+BEGIN;
+UPDATE t_half_stmt SET b = 10 WHERE a = 1;
+SET DEBUG_SYNC = 'innodb_row_update_for_mysql_begin SIGNAL half_stmt_started WAIT_FOR half_stmt_cont';
+UPDATE t_half_stmt SET b = 20 WHERE a = 2;
+SET DEBUG_SYNC = 'now WAIT_FOR half_stmt_started';
+# Kill and restart: --recover_preserve_trx=ON
+SET DEBUG_SYNC = 'RESET';
+# Row2 must not show uncommitted 20 after recovery-to-boundary; row1 stays 10 in preserved trx.
+SELECT a, b FROM t_half_stmt WHERE a IN (1, 2) ORDER BY a;
+a	b
+1	10
+2	0
+COMMIT;
+SELECT a, b FROM t_half_stmt WHERE a IN (1, 2) ORDER BY a;
+a	b
+1	10
+2	0
+DROP TABLE t_half_stmt;

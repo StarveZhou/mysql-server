@@ -1,0 +1,19 @@
+DROP TABLE IF EXISTS t_fu_restart;
+CREATE TABLE t_fu_restart (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_fu_restart VALUES (1, 0), (2, 0);
+BEGIN;
+SELECT b FROM t_fu_restart WHERE a = 1 FOR UPDATE;
+b
+0
+# Restart; preserved FOR UPDATE trx should still hold X lock on row 1
+# Kill and restart: --recover_preserve_trx=ON
+SET SESSION innodb_lock_wait_timeout = 1;
+UPDATE t_fu_restart SET b = 30 WHERE a = 1;
+ERROR HY000: Lock wait timeout exceeded; try restarting transaction
+COMMIT;
+UPDATE t_fu_restart SET b = 30 WHERE a = 1;
+SELECT a, b FROM t_fu_restart ORDER BY a;
+a	b
+1	30
+2	0
+DROP TABLE t_fu_restart;

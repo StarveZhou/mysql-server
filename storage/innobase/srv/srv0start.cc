@@ -87,6 +87,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "page0cur.h"
 #include "page0page.h"
 #include "rem0rec.h"
+#include "srv0preserve.h"
 #include "srv0srv.h"
 #include "srv0start.h"
 #include "trx0sys.h"
@@ -1669,6 +1670,8 @@ dberr_t srv_start(bool create_new_db) {
   ut_ad(srv_data_home != nullptr && *srv_data_home != '\0');
   fil_set_scan_dir(Fil_path::remove_quotes(srv_data_home));
 
+  srv_preserve_catalog_boot();
+
   /* Add --innodb-directories as known locations for IBD and IBU files. */
   if (srv_innodb_directories != nullptr && *srv_innodb_directories != 0) {
     fil_set_scan_dirs(Fil_path::remove_quotes(srv_innodb_directories));
@@ -2433,6 +2436,8 @@ void srv_dict_recover_on_restart() {
 
   trx_clear_resurrected_table_ids();
 
+  srv_preserve_catalog_recovery_apply();
+
   /* Do after all DD transactions recovery, to get consistent metadata */
   apply_dynamic_metadata();
 
@@ -2962,6 +2967,8 @@ void srv_thread_delay_cleanup_if_needed(bool wait_for_signal) {
 /** Shut down the InnoDB database. */
 void srv_shutdown() {
   ut_d(trx_sys_after_pre_dd_shutdown_validate());
+
+  srv_preserve_catalog_shutdown();
 
   /* Need to revert partition file names if minor upgrade fails. */
   uint data_version = MYSQL_VERSION_ID;

@@ -1,0 +1,43 @@
+# Design §06 / §8: row X-lock from DML is replayed after recovery; other sessions wait.
+# (Must change data in UPDATE so trx stays on rw_trx_list for RDS_TRX_ID attach.)
+
+--source include/have_innodb_max_16k.inc
+
+--disable_warnings
+DROP TABLE IF EXISTS t_lock_replay;
+--enable_warnings
+
+CREATE TABLE t_lock_replay (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_lock_replay VALUES (1, 0), (2, 0);
+
+--connect(con_hold,localhost,root,,test)
+--connection con_hold
+BEGIN;
+UPDATE t_lock_replay SET b = 2 WHERE a = 1;
+
+--let $trx_id= query_get_value("SELECT trx_id FROM information_schema.innodb_trx WHERE trx_mysql_thread_id = CONNECTION_ID()", trx_id, 1)
+
+--connection default
+--echo # Restart; preserved trx should still hold X lock on row 1
+--let $restart_parameters = restart: --recover_preserve_trx=ON
+--source include/kill_and_restart_mysqld.inc
+
+--disable_query_log
+--eval START TRANSACTION WITH RDS_TRX_ID = $trx_id
+--enable_query_log
+
+--connect(con_block,localhost,root,,test)
+--connection con_block
+SET SESSION innodb_lock_wait_timeout = 1;
+--error ER_LOCK_WAIT_TIMEOUT
+UPDATE t_lock_replay SET b = 20 WHERE a = 1;
+
+--connection default
+COMMIT;
+
+--connection con_block
+UPDATE t_lock_replay SET b = 20 WHERE a = 1;
+SELECT a, b FROM t_lock_replay ORDER BY a;
+
+--connection default
+DROP TABLE t_lock_replay;

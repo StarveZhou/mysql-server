@@ -53,6 +53,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "read0read.h"
 #include "row0mysql.h"
 #include "srv0mon.h"
+#include "srv0preserve.h"
 #include "srv0srv.h"
 #include "srv0start.h"
 #include "trx0purge.h"
@@ -167,6 +168,8 @@ static void trx_init(trx_t *trx) {
   trx->is_recovered = false;
 
   trx->session_attached_recovered = false;
+
+  trx->preserve_stmt_epoch = 0;
 
   trx->op_info = "";
 
@@ -688,6 +691,7 @@ void trx_disconnect_prepared(trx_t *trx) {
 /** Free a transaction object for MySQL.
 @param[in,out]  trx     transaction */
 void trx_free_for_mysql(trx_t *trx) {
+  srv_preserve_catalog_on_trx_end(trx_get_id_for_print(trx));
   trx_disconnect_plain(trx);
   trx_free_for_background(trx);
 }
@@ -2537,6 +2541,8 @@ void trx_mark_sql_stat_end(trx_t *trx) /*!< in: trx handle */
       if (trx->fts_trx != nullptr) {
         fts_savepoint_laststmt_refresh(trx);
       }
+
+      srv_preserve_catalog_on_stmt_end(trx);
 
       return;
   }
