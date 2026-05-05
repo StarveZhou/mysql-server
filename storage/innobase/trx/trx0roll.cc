@@ -199,7 +199,12 @@ static dberr_t trx_rollback_low(trx_t *trx) {
       return (DB_SUCCESS);
 
     case TRX_STATE_ACTIVE:
-      ut_ad(trx->in_mysql_trx_list);
+      /* rw_trx_list resurrected trxs are not on mysql_trx_list until a session
+      attaches via START TRANSACTION WITH RDS_TRX_ID; then session_attached_recovered
+      is set and mysql_thd is linked. */
+      ut_ad(trx->in_mysql_trx_list ||
+            (trx->is_recovered && trx->session_attached_recovered &&
+             trx->mysql_thd != nullptr));
       assert_trx_nonlocking_or_in_list(trx);
       /* Check an validate that undo is available for GTID. */
       trx_undo_gtid_add_update_undo(trx, false, true);

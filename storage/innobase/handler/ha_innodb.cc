@@ -1652,6 +1652,7 @@ static int innobase_start_trx_and_assign_read_view(
     THD *thd);        /* in: MySQL thread handle of the
                       user for whom the transaction should
                       be committed */
+
 /** Flush InnoDB redo logs to the file system.
 @param[in]      hton                    InnoDB handlerton
 @param[in]      binlog_group_flush      true if we got invoked by binlog
@@ -5726,6 +5727,99 @@ void innobase_commit_low(trx_t *trx) /*!< in: transaction handle */
   trx->will_lock = 0;
 }
 
+/** Attach client session to a preserved InnoDB transaction after recovery.
+@param[in]  hton         InnoDB handlerton
+@param[in]  thd          MySQL thread
+@param[in]  trx_id_arg   trx->id of target transaction
+@return 0 success, non-zero on error (also sets my_error) */
+static int innobase_attach_recovered_trx(handlerton *hton, THD *thd,
+                                      ulonglong trx_id_arg) {
+  DBUG_TRACE;
+  ut_ad(hton == innodb_hton_ptr);
+  ut_ad(EQ_CURRENT_THD(thd));
+
+  if (!srv_recover_preserve_trx) {
+    my_error(ER_WRONG_ARGUMENTS, MYF(0),
+             "recover_preserve_trx must be enabled at startup to use "
+             "START TRANSACTION WITH RDS_TRX_ID");
+    return 1;
+  }
+
+  const trx_id_t trx_id = static_cast<trx_id_t>(trx_id_arg);
+
+  if (trx_id == 0) {
+    my_error(ER_WRONG_ARGUMENTS, MYF(0), "trx_id must be non-zero");
+    return 1;
+  }
+
+  trx_t *const target = trx_rw_is_active(trx_id, true);
+
+  if (target == nullptr) {
+    my_error(ER_WRONG_ARGUMENTS, MYF(0),
+             "InnoDB: no rw transaction with this trx_id");
+    return 1;
+  }
+
+  if (!target->is_recovered || !trx_state_eq(target, TRX_STATE_ACTIVE) ||
+      !trx_is_started(target)) {
+    trx_release_reference(target);
+    my_error(ER_WRONG_ARGUMENTS, MYF(0),
+             "InnoDB: trx_id is not a preserved active transaction");
+    return 1;
+  }
+
+  trx_t *old_placeholder = nullptr;
+
+  trx_sys_mutex_enter();
+
+  if (target->mysql_thd != nullptr) {
+    trx_sys_mutex_exit();
+    trx_release_reference(target);
+    my_error(ER_WRONG_ARGUMENTS, MYF(0),
+             "InnoDB: transaction is already attached to a session");
+    return 1;
+  }
+
+  trx_t *&slot = thd_to_trx(thd);
+
+  if (slot != nullptr && slot != target) {
+    if (trx_state_eq(slot, TRX_STATE_NOT_STARTED)) {
+      old_placeholder = slot;
+      slot = nullptr;
+    } else {
+      trx_sys_mutex_exit();
+      trx_release_reference(target);
+      my_error(ER_WRONG_ARGUMENTS, MYF(0),
+               "InnoDB: session already has an active InnoDB transaction");
+      return 1;
+    }
+  }
+
+  target->mysql_thd = thd;
+  target->session_attached_recovered = true;
+  slot = target;
+
+  trx_sys_mutex_exit();
+
+  if (old_placeholder != nullptr) {
+    trx_free_for_mysql(old_placeholder);
+  }
+
+  trx_release_reference(target);
+
+  innobase_trx_init(thd, target);
+  innobase_register_trx(hton, thd, target);
+  return 0;
+}
+
+int innobase_attach_recovered_trx_for_session(THD *thd, ulonglong trx_id) {
+  if (innodb_hton_ptr == nullptr) {
+    my_error(ER_WRONG_ARGUMENTS, MYF(0), "InnoDB is not loaded");
+    return 1;
+  }
+  return innobase_attach_recovered_trx(innodb_hton_ptr, thd, trx_id);
+}
+
 /** Creates an InnoDB transaction struct for the thd if it does not yet have
  one. Starts a new InnoDB transaction if a transaction is not yet started. And
  assigns a new snapshot for a consistent read if the transaction does not yet
@@ -5809,6 +5903,8 @@ static int innobase_commit(handlerton *hton, /*!< in: InnoDB handlerton */
   bool will_commit =
       commit_trx ||
       (!thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
+  const bool attached_recovered_commit =
+      commit_trx && trx->session_attached_recovered;
   TrxInInnoDB trx_in_innodb(trx, will_commit);
 
   if (trx_in_innodb.is_aborted()) {
@@ -5932,6 +6028,13 @@ static int innobase_commit(handlerton *hton, /*!< in: InnoDB handlerton */
 
   innobase_srv_conc_force_exit_innodb(trx);
 
+  if (attached_recovered_commit) {
+    ut_ad(trx == thd_to_trx(thd));
+    trx->mysql_thd = nullptr;
+    trx->session_attached_recovered = false;
+    thd_to_trx(thd) = innobase_trx_allocate(thd);
+  }
+
   return 0;
 }
 
@@ -5950,6 +6053,9 @@ static int innobase_rollback(handlerton *hton, /*!< in: InnoDB handlerton */
   DBUG_PRINT("trans", ("aborting transaction"));
 
   trx_t *trx = check_trx_exists(thd);
+
+  const bool attached_recovered_rollback =
+      rollback_trx && trx->session_attached_recovered;
 
   TrxInInnoDB trx_in_innodb(trx);
 
@@ -5996,11 +6102,18 @@ static int innobase_rollback(handlerton *hton, /*!< in: InnoDB handlerton */
 
     trx_deregister_from_2pc(trx);
 
+    if (attached_recovered_rollback) {
+      ut_ad(trx == thd_to_trx(thd));
+      trx->mysql_thd = nullptr;
+      trx->session_attached_recovered = false;
+      thd_to_trx(thd) = innobase_trx_allocate(thd);
+    }
+
   } else {
     error = trx_rollback_last_sql_stat_for_mysql(trx);
   }
 
-  return convert_error_code_to_mysql(error, 0, trx->mysql_thd);
+  return convert_error_code_to_mysql(error, 0, thd);
 }
 
 /** Rolls back a transaction
@@ -6190,6 +6303,18 @@ static int innobase_close_connection(
   if (trx != nullptr) {
     ut_ad(trx->mysql_thd == thd);
     TrxInInnoDB trx_in_innodb(trx);
+
+    if (trx->session_attached_recovered) {
+      ut_ad(trx->is_recovered);
+      trx_deregister_from_2pc(trx);
+      trx->mysql_thd = nullptr;
+      trx->session_attached_recovered = false;
+      thd_to_trx(thd) = nullptr;
+
+      ut::delete_(thd_to_innodb_session(thd));
+      thd_to_innodb_session(thd) = nullptr;
+      return 0;
+    }
 
     if (trx_in_innodb.is_aborted()) {
       while (trx_is_started(trx)) {

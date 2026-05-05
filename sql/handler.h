@@ -636,6 +636,8 @@ static const uint MYSQL_START_TRANS_OPT_READ_ONLY = 2;
 static const uint MYSQL_START_TRANS_OPT_READ_WRITE = 4;
 // HIGH PRIORITY option
 static const uint MYSQL_START_TRANS_OPT_HIGH_PRIORITY = 8;
+/** WITH RDS_TRX_ID = … — attach to preserved InnoDB transaction (recover_preserve_trx). */
+static const uint MYSQL_START_TRANS_OPT_ATTACH_TRX_ID = 16;
 
 enum legacy_db_type {
   DB_TYPE_UNKNOWN = 0,
@@ -7256,6 +7258,8 @@ int ha_change_key_cache(KEY_CACHE *old_key_cache, KEY_CACHE *new_key_cache);
 
 /* transactions: interface to handlerton functions */
 int ha_start_consistent_snapshot(THD *thd);
+/** InnoDB only: START TRANSACTION WITH RDS_TRX_ID (preserved recovery trx). */
+int innobase_attach_recovered_trx_for_session(THD *thd, ulonglong trx_id);
 int ha_commit_trans(THD *thd, bool all, bool ignore_global_read_lock = false);
 int ha_commit_attachable(THD *thd);
 int ha_rollback_trans(THD *thd, bool all);

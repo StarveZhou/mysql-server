@@ -1,0 +1,12 @@
+# START TRANSACTION WITH RDS_TRX_ID is rejected when recover_preserve_trx is OFF.
+
+--source include/have_innodb_max_16k.inc
+
+--let $restart_parameters= restart: --recover_preserve_trx=OFF
+--source include/restart_mysqld.inc
+
+--error ER_WRONG_ARGUMENTS
+START TRANSACTION WITH RDS_TRX_ID = 1;
+
+--let $restart_parameters= restart: --recover_preserve_trx=ON
+--source include/restart_mysqld.inc

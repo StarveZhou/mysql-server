@@ -760,6 +760,7 @@ static const SYMBOL symbols[] = {
     {SYM("TRIGGERS", TRIGGERS_SYM)},
     {SYM("TRUE", TRUE_SYM)},
     {SYM("TRUNCATE", TRUNCATE_SYM)},
+    {SYM("RDS_TRX_ID", RDS_TRX_ID_SYM)},
     {SYM("TYPE", TYPE_SYM)},
     {SYM("TYPES", TYPES_SYM)},
     {SYM("UNBOUNDED", UNBOUNDED_SYM)},

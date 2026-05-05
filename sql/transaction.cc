@@ -186,6 +186,16 @@ bool trans_begin(THD *thd, uint flags) {
   if (thd->tx_read_only) thd->server_status |= SERVER_STATUS_IN_TRANS_READONLY;
   DBUG_PRINT("info", ("setting SERVER_STATUS_IN_TRANS"));
 
+  if (flags & MYSQL_START_TRANS_OPT_ATTACH_TRX_ID) {
+    if (innobase_attach_recovered_trx_for_session(
+            thd, thd->lex->start_transaction_trx_id)) {
+      thd->variables.option_bits &= ~OPTION_BEGIN;
+      thd->server_status &=
+          ~(SERVER_STATUS_IN_TRANS | SERVER_STATUS_IN_TRANS_READONLY);
+      return true;
+    }
+  }
+
   if (tst) tst->add_trx_state(thd, TX_EXPLICIT);
 
   /* ha_start_consistent_snapshot() relies on OPTION_BEGIN flag set. */
@@ -266,6 +276,7 @@ bool trans_commit(THD *thd, bool ignore_global_read_lock) {
   thd->variables.option_bits &= ~OPTION_BEGIN;
   thd->get_transaction()->reset_unsafe_rollback_flags(Transaction_ctx::SESSION);
   thd->lex->start_transaction_opt = 0;
+  thd->lex->start_transaction_trx_id = 0;
 
   /* The transaction should be marked as complete in P_S. */
   assert(thd->m_transaction_psi == nullptr);
@@ -407,6 +418,7 @@ bool trans_rollback(THD *thd) {
   thd->variables.option_bits &= ~OPTION_BEGIN;
   thd->get_transaction()->reset_unsafe_rollback_flags(Transaction_ctx::SESSION);
   thd->lex->start_transaction_opt = 0;
+  thd->lex->start_transaction_trx_id = 0;
 
   /* The transaction should be marked as complete in P_S. */
   assert(thd->m_transaction_psi == nullptr);

@@ -166,6 +166,8 @@ static void trx_init(trx_t *trx) {
 
   trx->is_recovered = false;
 
+  trx->session_attached_recovered = false;
+
   trx->op_info = "";
 
   trx->isolation_level = TRX_ISO_REPEATABLE_READ;

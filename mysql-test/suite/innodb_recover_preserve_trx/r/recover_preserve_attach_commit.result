@@ -1,0 +1,24 @@
+DROP TABLE IF EXISTS t_recover_attach;
+CREATE TABLE t_recover_attach (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_recover_attach VALUES (1, 0);
+BEGIN;
+UPDATE t_recover_attach SET b = 100 WHERE a = 1;
+# Unclean shutdown then restart (kill_and_restart; recover_preserve_trx=ON)
+# Kill and restart: --recover_preserve_trx=ON
+# After recovery: uncommitted update not visible yet
+SELECT b FROM t_recover_attach WHERE a = 1;
+b
+0
+# Attach preserved transaction by InnoDB trx id
+SELECT b FROM t_recover_attach WHERE a = 1;
+b
+100
+COMMIT;
+# Commit must persist (InnoDB must run trx_commit_for_mysql for attached trx)
+SELECT b FROM t_recover_attach WHERE a = 1;
+b
+100
+SELECT COUNT(*) AS active_trx FROM information_schema.innodb_trx;
+active_trx
+0
+DROP TABLE t_recover_attach;

@@ -1,0 +1,4 @@
+# restart: --recover_preserve_trx=OFF
+START TRANSACTION WITH RDS_TRX_ID = 1;
+ERROR HY000: Incorrect arguments to recover_preserve_trx must be enabled at startup to use START TRANSACTION WITH RDS_TRX_ID
+# restart: --recover_preserve_trx=ON

@@ -834,6 +834,9 @@ struct trx_t {
   */
   bool is_recovered;
 
+  /** THD attached via START TRANSACTION WITH RDS_TRX_ID (preserved recovery). */
+  bool session_attached_recovered;
+
   std::atomic<std::thread::id> killed_by; /*!< The thread ID that wants to
                             kill this transaction asynchronously.
                             This is required because we recursively

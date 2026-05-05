@@ -1184,7 +1184,7 @@ ulong opt_log_throttle_queries_not_using_indexes = 0;
 bool opt_log_slow_extra = false;
 bool opt_disable_networking = false, opt_skip_show_db = false;
 bool opt_skip_name_resolve = false;
-bool opt_recover_preserve_trx = false;
+bool opt_recover_preserve_trx = true;
 bool opt_character_set_client_handshake = true;
 bool server_id_supplied = false;
 static bool opt_endinfo;

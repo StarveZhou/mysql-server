@@ -1,0 +1,34 @@
+# Attach preserved trx then ROLLBACK discards uncommitted work.
+
+--source include/have_innodb_max_16k.inc
+
+--disable_warnings
+DROP TABLE IF EXISTS t_recover_rb;
+--enable_warnings
+
+CREATE TABLE t_recover_rb (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_recover_rb VALUES (1, 0);
+
+BEGIN;
+UPDATE t_recover_rb SET b = 200 WHERE a = 1;
+
+--let $trx_id= query_get_value("SELECT trx_id FROM information_schema.innodb_trx LIMIT 1", trx_id, 1)
+
+--let $restart_parameters= restart: --recover_preserve_trx=ON
+--source include/kill_and_restart_mysqld.inc
+
+SELECT b FROM t_recover_rb WHERE a = 1;
+
+--disable_query_log
+--eval START TRANSACTION WITH RDS_TRX_ID = $trx_id
+--enable_query_log
+
+SELECT b FROM t_recover_rb WHERE a = 1;
+
+ROLLBACK;
+
+SELECT b FROM t_recover_rb WHERE a = 1;
+
+SELECT COUNT(*) AS active_trx FROM information_schema.innodb_trx;
+
+DROP TABLE t_recover_rb;

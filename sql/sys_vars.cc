@@ -3982,10 +3982,10 @@ static Sys_var_bool Sys_skip_name_resolve(
 static Sys_var_bool Sys_recover_preserve_trx(
     "recover_preserve_trx",
     "When ON, InnoDB crash recovery uses the experimental path that preserves "
-    "active transactions for later session attachment. Default OFF; must be "
-    "set at server startup.",
+    "active transactions for later session attachment. Default ON; read-only "
+    "at runtime; must use command line or config file to set OFF at startup.",
     READ_ONLY GLOBAL_VAR(opt_recover_preserve_trx), CMD_LINE(OPT_ARG),
-    DEFAULT(false));
+    DEFAULT(true));
 
 static Sys_var_bool Sys_skip_show_database(
     "skip_show_database", "Don't allow 'SHOW DATABASE' commands",

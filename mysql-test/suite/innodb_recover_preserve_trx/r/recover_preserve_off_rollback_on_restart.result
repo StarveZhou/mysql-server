@@ -1,0 +1,20 @@
+DROP TABLE IF EXISTS t_recover_off;
+CREATE TABLE t_recover_off (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_recover_off VALUES (1, 0);
+BEGIN;
+UPDATE t_recover_off SET b = 500 WHERE a = 1;
+# Unclean shutdown; restart with recover_preserve_trx=ON (trx preserved)
+# Kill and restart: --recover_preserve_trx=ON
+# Preserved user transaction should still appear in innodb_trx
+SELECT COUNT(*) AS preserved_trx FROM information_schema.innodb_trx;
+preserved_trx
+1
+# Restart with recover_preserve_trx=OFF: preserved trx auto-rollback
+# Kill and restart: --recover_preserve_trx=OFF
+SELECT b FROM t_recover_off WHERE a = 1;
+b
+0
+SELECT COUNT(*) AS active_trx FROM information_schema.innodb_trx;
+active_trx
+0
+DROP TABLE t_recover_off;

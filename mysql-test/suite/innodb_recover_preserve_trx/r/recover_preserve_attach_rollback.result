@@ -1,0 +1,20 @@
+DROP TABLE IF EXISTS t_recover_rb;
+CREATE TABLE t_recover_rb (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_recover_rb VALUES (1, 0);
+BEGIN;
+UPDATE t_recover_rb SET b = 200 WHERE a = 1;
+# Kill and restart: --recover_preserve_trx=ON
+SELECT b FROM t_recover_rb WHERE a = 1;
+b
+0
+SELECT b FROM t_recover_rb WHERE a = 1;
+b
+200
+ROLLBACK;
+SELECT b FROM t_recover_rb WHERE a = 1;
+b
+0
+SELECT COUNT(*) AS active_trx FROM information_schema.innodb_trx;
+active_trx
+0
+DROP TABLE t_recover_rb;

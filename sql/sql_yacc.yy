@@ -1015,7 +1015,7 @@ void warn_on_deprecated_user_defined_collation(
 %token  REAL_SYM 690                      /* SQL-2003-R */
 %token<lexer.keyword> REBUILD_SYM 691
 %token<lexer.keyword> RECOVER_SYM 692
-%token  OBSOLETE_TOKEN_693 693            /* was: REDOFILE_SYM */
+%token<lexer.keyword> RDS_TRX_ID_SYM 693
 %token<lexer.keyword> REDO_BUFFER_SIZE_SYM 694
 %token<lexer.keyword> REDUNDANT_SYM 695
 %token  REFERENCES 696                    /* SQL-2003-R */
@@ -9342,6 +9342,12 @@ start:
               YYTHD->syntax_error();
               MYSQL_YYABORT;
             }
+            if (($3 & MYSQL_START_TRANS_OPT_ATTACH_TRX_ID) &&
+                ($3 & MYSQL_START_TRANS_OPT_WITH_CONS_SNAPSHOT))
+            {
+              YYTHD->syntax_error();
+              MYSQL_YYABORT;
+            }
             lex->start_transaction_opt= $3;
           }
         ;
@@ -9380,6 +9386,11 @@ start_transaction_option:
         | READ_SYM WRITE_SYM
           {
             $$= MYSQL_START_TRANS_OPT_READ_WRITE;
+          }
+        | WITH RDS_TRX_ID_SYM EQ ulonglong_num
+          {
+            Lex->start_transaction_trx_id = $4;
+            $$= MYSQL_START_TRANS_OPT_ATTACH_TRX_ID;
           }
         ;
 
@@ -17225,6 +17236,7 @@ begin_stmt:
             LEX *lex=Lex;
             lex->sql_command = SQLCOM_BEGIN;
             lex->start_transaction_opt= 0;
+            lex->start_transaction_trx_id= 0;
           }
           opt_work {}
         ;

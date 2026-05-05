@@ -1,0 +1,32 @@
+# Preserved trx exists after restart with recover_preserve_trx=ON.
+# After restart with recover_preserve_trx=OFF, recovery rolls back that trx:
+# row shows committed state and innodb_trx has no lingering user transaction.
+
+--source include/have_innodb_max_16k.inc
+
+--disable_warnings
+DROP TABLE IF EXISTS t_recover_off;
+--enable_warnings
+
+CREATE TABLE t_recover_off (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t_recover_off VALUES (1, 0);
+
+BEGIN;
+UPDATE t_recover_off SET b = 500 WHERE a = 1;
+
+--echo # Unclean shutdown; restart with recover_preserve_trx=ON (trx preserved)
+--let $restart_parameters= restart: --recover_preserve_trx=ON
+--source include/kill_and_restart_mysqld.inc
+
+--echo # Preserved user transaction should still appear in innodb_trx
+SELECT COUNT(*) AS preserved_trx FROM information_schema.innodb_trx;
+
+--echo # Restart with recover_preserve_trx=OFF: preserved trx auto-rollback
+--let $restart_parameters= restart: --recover_preserve_trx=OFF
+--source include/kill_and_restart_mysqld.inc
+
+SELECT b FROM t_recover_off WHERE a = 1;
+
+SELECT COUNT(*) AS active_trx FROM information_schema.innodb_trx;
+
+DROP TABLE t_recover_off;

@@ -3992,6 +3992,7 @@ struct LEX : public Query_tables_list {
   */
   bool grant_privilege;
   uint slave_thd_opt, start_transaction_opt;
+  ulonglong start_transaction_trx_id{0};
   int select_number;  ///< Number of query block (by EXPLAIN)
   uint8 create_view_algorithm;
   uint8 create_view_check;
